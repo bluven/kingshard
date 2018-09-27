@@ -34,6 +34,7 @@ const (
 	PingPeroid        int64 = 4
 )
 
+// 简单的数据库连接池实现
 type DB struct {
 	sync.RWMutex
 
@@ -81,6 +82,7 @@ func Open(addr string, user string, password string, dbName string, maxConnNum i
 	db.cacheConns = make(chan *Conn, db.maxConnNum)
 	atomic.StoreInt32(&(db.state), Unknown)
 
+	// 预先创建链接，超过initConnNum的链接并不真正连接
 	for i := 0; i < db.maxConnNum; i++ {
 		if i < db.InitConnNum {
 			conn, err := db.newConn()
@@ -95,6 +97,7 @@ func Open(addr string, user string, password string, dbName string, maxConnNum i
 			db.idleConns <- conn
 		}
 	}
+	// todo: 还没ping过？
 	db.SetLastPing()
 
 	return db, nil
@@ -166,6 +169,7 @@ func (db *DB) getIdleConns() chan *Conn {
 }
 
 func (db *DB) Ping() error {
+	// ping数据库，因一个db有个连接池，所以特意用了一个指定链接ping
 	var err error
 	if db.checkConn == nil {
 		db.checkConn, err = db.newConn()
@@ -200,6 +204,7 @@ func (db *DB) closeConn(co *Conn) error {
 		conns := db.getIdleConns()
 		if conns != nil {
 			select {
+			// todo: 为啥放到idleConns里?
 			case conns <- co:
 				return nil
 			default:
@@ -211,6 +216,7 @@ func (db *DB) closeConn(co *Conn) error {
 }
 
 func (db *DB) tryReuse(co *Conn) error {
+	// 试着重用链接，打开事务的回滚，autocommit关掉的，打开，编码不一致的设置编码
 	var err error
 	//reuse Connection
 	if co.IsInTransaction() {
@@ -242,6 +248,7 @@ func (db *DB) tryReuse(co *Conn) error {
 }
 
 func (db *DB) PopConn() (*Conn, error) {
+	// 获取一个数据库链接，先从cachedChann获取，没有可用的就从idle里获取，然后用tryReuse保证状态
 	var co *Conn
 	var err error
 
@@ -271,6 +278,7 @@ func (db *DB) GetConnFromCache(cacheConns chan *Conn) *Conn {
 	var err error
 	for 0 < len(cacheConns) {
 		co = <-cacheConns
+		// ? PingPeroid < time.Now().Unix()-co.pushTimestamp 干什么的
 		if co != nil && PingPeroid < time.Now().Unix()-co.pushTimestamp {
 			err = co.Ping()
 			if err != nil {
@@ -286,6 +294,7 @@ func (db *DB) GetConnFromCache(cacheConns chan *Conn) *Conn {
 }
 
 func (db *DB) GetConnFromIdle(cacheConns, idleConns chan *Conn) (*Conn, error) {
+	// 从idle和cached都尝试获取，谁先有可用的就用谁的
 	var co *Conn
 	var err error
 	select {
@@ -334,6 +343,7 @@ func (db *DB) PushConn(co *Conn, err error) {
 	}
 }
 
+// 对Conn的封装，Close的时候如果链接没问题，则放回连接池
 type BackendConn struct {
 	*Conn
 	db *DB

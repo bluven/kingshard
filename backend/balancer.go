@@ -51,6 +51,9 @@ func Gcd(ary []int) int {
 }
 
 func (n *Node) InitBalancer() {
+	// todo: 学习round robin实现
+	// 作者采用了静态轮询，实现规划好了顺序，运行时不再重复计算
+
 	var sum int
 	n.LastSlaveIndex = 0
 	gcd := Gcd(n.SlaveWeights)

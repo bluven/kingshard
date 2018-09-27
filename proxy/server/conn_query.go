@@ -164,6 +164,7 @@ func (c *ClientConn) getBackendConn(n *backend.Node, fromSlave bool) (co *backen
 }
 
 //获取shard的conn，第一个参数表示是不是select
+// 根据plan获取相关的数据库连接, 如果已打开事务，只能返回一个
 func (c *ClientConn) getShardConns(fromSlave bool, plan *router.Plan) (map[string]*backend.BackendConn, error) {
 	var err error
 	if plan == nil || len(plan.RouteNodeIndexs) == 0 {
@@ -356,6 +357,7 @@ func (c *ClientConn) newEmptyResultset(stmt *sqlparser.Select) *mysql.Resultset 
 }
 
 func (c *ClientConn) handleExec(stmt sqlparser.Statement, args []interface{}) error {
+	// 根据语句生成执行计划，分开执行，并合并执行结果
 	plan, err := c.schema.rule.BuildPlan(c.db, stmt)
 	if err != nil {
 		return err
@@ -383,8 +385,11 @@ func (c *ClientConn) handleExec(stmt sqlparser.Statement, args []interface{}) er
 func (c *ClientConn) mergeExecResult(rs []*mysql.Result) error {
 	r := new(mysql.Result)
 	for _, v := range rs {
+		// todo: ?
 		r.Status |= v.Status
 		r.AffectedRows += v.AffectedRows
+
+		// todo: 需要研究协议
 		if r.InsertId == 0 {
 			r.InsertId = v.InsertId
 		} else if r.InsertId > v.InsertId {
@@ -394,6 +399,7 @@ func (c *ClientConn) mergeExecResult(rs []*mysql.Result) error {
 		}
 	}
 
+	// todo: 查看lastInsertId
 	if r.InsertId > 0 {
 		c.lastInsertId = int64(r.InsertId)
 	}

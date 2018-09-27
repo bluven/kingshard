@@ -55,6 +55,8 @@ func (n *Node) CheckNode() {
 	for n.Online {
 		n.checkMaster()
 		n.checkSlave()
+
+		// 为啥16秒
 		time.Sleep(16 * time.Second)
 	}
 }
@@ -76,6 +78,7 @@ func (n *Node) GetMasterConn() (*BackendConn, error) {
 }
 
 func (n *Node) GetSlaveConn() (*BackendConn, error) {
+	// 获取一个从数据库链接，按权重轮询
 	n.Lock()
 	db, err := n.GetNextSlave()
 	n.Unlock()
@@ -103,6 +106,7 @@ func (n *Node) checkMaster() {
 	if err := db.Ping(); err != nil {
 		golog.Error("Node", "checkMaster", "Ping", 0, "db.Addr", db.Addr(), "error", err.Error())
 	} else {
+		// 如果db是down的，尝试重新连接
 		if atomic.LoadInt32(&(db.state)) == Down {
 			golog.Info("Node", "checkMaster", "Master up", 0, "db.Addr", db.Addr())
 			err := n.UpMaster(db.addr)
@@ -118,6 +122,8 @@ func (n *Node) checkMaster() {
 		return
 	}
 
+	// 一定时间段后将master下线
+	// todo: 需要看配置
 	if int64(n.DownAfterNoAlive) > 0 && time.Now().Unix()-db.GetLastPing() > int64(n.DownAfterNoAlive/time.Second) {
 		golog.Info("Node", "checkMaster", "Master down", 0,
 			"db.Addr", db.Addr(),
@@ -239,6 +245,7 @@ func (n *Node) OpenDB(addr string) (*DB, error) {
 }
 
 func (n *Node) UpDB(addr string) (*DB, error) {
+	// 连接数据库，并ping一下，成功则设置状态为UP，否则DOWN
 	db, err := n.OpenDB(addr)
 
 	if err != nil {
@@ -265,6 +272,7 @@ func (n *Node) UpMaster(addr string) error {
 }
 
 func (n *Node) UpSlave(addr string) error {
+	// 连接从数据库，如果之前应经连接过，更新链接，否则添加到列表
 	db, err := n.UpDB(addr)
 	if err != nil {
 		golog.Error("Node", "UpSlave", err.Error(), 0)
@@ -317,6 +325,8 @@ func (n *Node) DownSlave(addr string, state int32) error {
 }
 
 func (n *Node) ParseMaster(masterStr string) error {
+	// 跟UpMaster比，缺少了ping的过程, 也没有设置状态
+
 	var err error
 	if len(masterStr) == 0 {
 		return errors.ErrNoMasterDB
