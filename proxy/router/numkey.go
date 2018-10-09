@@ -55,6 +55,7 @@ func ParseNumSharding(Locations []int, TableRowLimit int) ([]NumKeyRange, error)
 		tableCount += Locations[i]
 	}
 
+	// 建立key值到表的映射
 	ranges := make([]NumKeyRange, tableCount)
 	for i := 0; i < tableCount; i++ {
 		ranges[i].Start = int64(i * TableRowLimit)

@@ -43,8 +43,15 @@ type Rule struct {
 
 	Type           string
 	Nodes          []string
-	SubTableIndexs []int       //SubTableIndexs store all the index of sharding sub-table
-	TableToNode    map[int]int //key is table index, and value is node index
+
+	// SubTableIndexs store all the index of sharding sub-table
+	// 各个shard table的索引
+	SubTableIndexs []int
+
+	//key is table index, and value is node index
+	// shard table到节点的映射，value的值可以用来在Nodes中寻找对应节点
+	TableToNode    map[int]int
+
 	Shard          Shard
 }
 
@@ -104,6 +111,8 @@ func (r *Rule) checkUpdateExprs(exprs sqlparser.UpdateExprs) error {
 
 //NewRouter build router according to the config file
 func NewRouter(schemaConfig *config.SchemaConfig) (*Router, error) {
+
+	// 判断默认节点是否在节点列表中
 	if !includeNode(schemaConfig.Nodes, schemaConfig.Default) {
 		return nil, fmt.Errorf("default node[%s] not in the nodes list",
 			schemaConfig.Default)
@@ -129,6 +138,12 @@ func NewRouter(schemaConfig *config.SchemaConfig) (*Router, error) {
 		if rule.Type == DefaultRuleType {
 			return nil, fmt.Errorf("[default-rule] duplicate, must only one")
 		}
+
+		// 看到rule.DB在router中是否已经有规则映射表
+		// 没有：为该db创建规则映射表，并以rule.Table为键保存该规则
+		// 存在：判断rule.Table对应的规则是否存在
+		// 		存在：错误
+		//		不存在： 保存该规则
 		//if the database exist in rules
 		if _, ok := rt.Rules[rule.DB]; ok {
 			if _, ok := rt.Rules[rule.DB][rule.Table]; ok {
@@ -146,6 +161,7 @@ func NewRouter(schemaConfig *config.SchemaConfig) (*Router, error) {
 }
 
 func (r *Router) GetRule(db, table string) *Rule {
+	// 根据table获取规则，如果没有合适的规则，将默认规则的DB设为db， 并返回默认规则
 	arry := strings.Split(table, ".")
 	if len(arry) == 2 {
 		table = strings.Trim(arry[1], "`")
@@ -176,6 +192,8 @@ func parseRule(cfg *config.ShardConfig) (*Rule, error) {
 		if len(cfg.Locations) != len(r.Nodes) {
 			return nil, errors.ErrLocationsCount
 		}
+
+		// 建立表到节点的映射
 		for i := 0; i < len(cfg.Locations); i++ {
 			for j := 0; j < cfg.Locations[i]; j++ {
 				r.SubTableIndexs = append(r.SubTableIndexs, j+sumTables)
@@ -297,6 +315,7 @@ func (r *Router) buildSelectPlan(db string, statement sqlparser.Statement) (*Pla
 	var err error
 	var tableName string
 
+	// 获取表名
 	stmt := statement.(*sqlparser.Select)
 	switch v := (stmt.From[0]).(type) {
 	case *sqlparser.AliasedTableExpr:
